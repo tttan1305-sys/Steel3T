@@ -46,6 +46,8 @@ import type { BeamInput } from './input';
 import { closestMid } from './section3d';
 import type { Vec3 } from './model';
 import { KIND_COLOR, KIND_LABEL, jointTypeName } from './model';
+import { Capacitor } from '@capacitor/core';
+import { ScreenOrientation } from '@capacitor/screen-orientation';
 
 /** Dự án mới: áp パラメーター mặc định đã lưu (nếu có) */
 function newProject(): Project {
@@ -253,6 +255,7 @@ function App({ onSwitch }: { onSwitch: () => void }) {
     try { return localStorage.getItem('s3t.land') === '1'; } catch { return false; }
   });
   const [rotOk, setRotOk] = useState(forceLand);
+  const [hwLand, setHwLand] = useState(false);
   // bản điện thoại (màn hình dọc): bố cục riêng + thanh chuyển Hình / Cả hai / Nhập
   const mobQ = '(max-width: 700px) and (orientation: portrait)';
   const [mobScr, setMobScr] = useState(() => typeof window !== 'undefined' && window.matchMedia(mobQ).matches);
@@ -262,7 +265,7 @@ function App({ onSwitch }: { onSwitch: () => void }) {
     mq.addEventListener('change', on);
     return () => mq.removeEventListener('change', on);
   }, []);
-  const mob = mobScr && !forceLand;
+  const mob = mobScr && !(forceLand && !hwLand);
   const [mview, setMview0] = useState<'view' | 'split' | 'panel'>(() => {
     try { const v = localStorage.getItem('s3t.mv'); return v === 'view' || v === 'panel' ? v : 'split'; } catch { return 'split'; }
   });
@@ -273,9 +276,28 @@ function App({ onSwitch }: { onSwitch: () => void }) {
     const t = setTimeout(() => window.dispatchEvent(new Event('resize')), 60);
     return () => clearTimeout(t);
   }, [mob, mview]);
+  // xoay màn hình thật (app Android / app đã cài) để bàn phím cũng nằm ngang; không được thì xoay bằng CSS
+  useEffect(() => {
+    let live = true;
+    const so = (screen as unknown as { orientation?: { lock?: (o: string) => Promise<void>; unlock?: () => void } }).orientation;
+    if (forceLand) {
+      const p = Capacitor.isNativePlatform() ? ScreenOrientation.lock({ orientation: 'landscape' }) : so?.lock ? so.lock('landscape') : Promise.reject();
+      p.then(() => {
+        if (!live) return;
+        setHwLand(true);
+        // khoá báo xong mà màn hình vẫn dọc (máy không hỗ trợ) → quay về xoay bằng CSS
+        setTimeout(() => { if (live && window.matchMedia('(orientation: portrait)').matches) setHwLand(false); }, 1200);
+      }).catch(() => { if (live) setHwLand(false); });
+    } else {
+      setHwLand(false);
+      if (Capacitor.isNativePlatform()) ScreenOrientation.unlock().catch(() => { /* bỏ qua */ });
+      else try { so?.unlock?.(); } catch { /* bỏ qua */ }
+    }
+    return () => { live = false; };
+  }, [forceLand]);
   useEffect(() => {
     const el = document.documentElement;
-    el.classList.toggle('force-land', forceLand);
+    el.classList.toggle('force-land', forceLand && !hwLand);
     try { localStorage.setItem('s3t.land', forceLand ? '1' : '0'); } catch { /* bỏ qua */ }
     const size = () => {
       el.style.setProperty('--vw', `${window.innerWidth}px`);
@@ -285,7 +307,7 @@ function App({ onSwitch }: { onSwitch: () => void }) {
     size();
     window.addEventListener('resize', size);
     return () => window.removeEventListener('resize', size);
-  }, [forceLand]);
+  }, [forceLand, hwLand]);
   const [beamIn, setBeamIn] = useRemembered('beam', p, () => initialBeamInput(p), ['x1', 'y1', 'x2', 'y2', 'p1', 'p2', 'ref1', 'ref2']);
   const [braceIn, setBraceIn] = useRemembered('brace', p, () => initialBraceInput(p), ['x1', 'y1', 'x2', 'y2', 'p1', 'p2', 'ref1', 'ref2']);
   // nhập 間柱 / 小梁 theo đường chuẩn
