@@ -3,7 +3,7 @@
 Ứng dụng web (React + TypeScript + Three.js) để dựng mô hình nhà thép tiền chế theo hệ lưới trục và cao độ tầng, xem 3D, xuất bản vẽ 2D và list đặt hàng.
 
 ## Cài lên điện thoại / máy tính như một app
-Mở **https://tttan1305-sys.github.io/steel3t/** rồi:
+Mở **https://tttan1305-sys.github.io/Steel3T/** rồi:
 - iPhone (Safari): nút Chia sẻ → *Thêm vào MH chính*.
 - Android (Chrome): ⋮ → *Cài đặt ứng dụng* / *Thêm vào màn hình chính*.
 - Máy tính (Chrome / Edge): biểu tượng cài đặt ở thanh địa chỉ.
