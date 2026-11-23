@@ -876,7 +876,7 @@ function App({ onSwitch }: { onSwitch: () => void }) {
         editing ||
         (pk.kind === 'column'
           ? pk.preview !== false
-            ? `Bấm đúng giao trục trên Mặt bằng để xem trước cột ${colIn.memberName} (bấm lại để bỏ) · mặt đứng: bấm đường trục chỉ chọn ở ⑤ Vị trí, không tạo cột · bấm nhãn tầng = chân cột · Enter = xác nhận, Esc = huỷ`
+            ? `Bấm giao trục để xem trước cột ${colIn.memberName} (bấm lại = bỏ) · nhãn tầng = chân cột · Enter xác nhận · Esc huỷ`
             : `Bấm giao trục để đặt cột ${colIn.memberName}`
           : pk.kind === 'brace'
             ? pk.start
