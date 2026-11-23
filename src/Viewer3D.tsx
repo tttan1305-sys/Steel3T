@@ -313,6 +313,10 @@ export default function Viewer3D({ project, members, selected, onSelect, highlig
   }>();
   const pickRef = useRef<PickNodes | null | undefined>(pick);
   pickRef.current = pick;
+  // ⬚ Quét: kéo 1 ngón (điện thoại) = quét khung chọn ngay, không cần giữ
+  const [scanOn, setScanOn] = useState(false);
+  const scanRef = useRef(false);
+  scanRef.current = scanOn && !!pick?.onBox;
   const membersRef = useRef(members);
   membersRef.current = members;
   const onPointRef = useRef(onPoint);
@@ -516,7 +520,7 @@ export default function Viewer3D({ project, members, selected, onSelect, highlig
       if (e.button !== 0) return;
       clearTimeout(lpTimer);
       // điện thoại: kéo 1 ngón = xoay như thường; giữ yên ~0,45 s rồi kéo = quét chọn khung
-      if (e.pointerType === 'touch' && pickRef.current?.onBox) {
+      if (e.pointerType === 'touch' && pickRef.current?.onBox && !scanRef.current) {
         const [bx, by] = localPt(e.clientX, e.clientY);
         const id = e.pointerId;
         lpTimer = window.setTimeout(() => {
@@ -1439,6 +1443,11 @@ export default function Viewer3D({ project, members, selected, onSelect, highlig
         <button className={measOn ? 'on' : ''} title="Thước đo: bấm 部材 thứ nhất rồi 部材 thứ hai → khoảng cách vuông góc giữa 2 bề mặt" onClick={() => { setMeasOn(!measOn); setMeasIds([]); }}>
           📏 Đo
         </button>
+        {pick?.onBox && (
+          <button className={scanOn ? 'on' : ''} title="Quét chọn: kéo 1 ngón / chuột vẽ khung chọn nhiều 部材 cùng lúc (tắt để kéo = xoay)" onClick={() => setScanOn(!scanOn)}>
+            ⬚ Quét{scanOn ? ' ✓' : ''}
+          </button>
+        )}
       </div>
       {measOn && (
         <div className="meas-box">

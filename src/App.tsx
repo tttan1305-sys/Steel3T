@@ -699,6 +699,11 @@ function App({ onSwitch }: { onSwitch: () => void }) {
       const what = pk.kind === 'post' ? '間柱' : '小梁';
       // bước 3: chọn đường chuẩn; cách 'div' chọn lần lượt đường giới hạn 1 rồi 2 (bấm tiếp = chọn lại từ đầu)
       const setRef = (key: string) => {
+        if (lineIn.pairs?.some((pr) => pr.ref)) {
+          const pairs = lineIn.pairs.map((pr) => ({ s1: pr.s1, s2: pr.s2 }));
+          if (lineIn.mode !== 'div') return setLineIn({ ...lineIn, pairs, ref: key });
+          return setLineIn({ ...lineIn, pairs, ref: key, ref2: '' });
+        }
         if (lineIn.mode !== 'div') return setLineIn({ ...lineIn, ref: key });
         if (!lineIn.ref || lineIn.ref2) return setLineIn({ ...lineIn, ref: key, ref2: '' });
         if (key === lineIn.ref) return;
@@ -729,12 +734,52 @@ function App({ onSwitch }: { onSwitch: () => void }) {
             const gp = groups.find((gg) => { const d = Math.abs(ang(gg[0]) - ang(s)); return Math.min(d, Math.PI - d) < 0.05; });
             if (gp) gp.push(s); else groups.push([s]);
           }
-          const best = groups.sort((a, b) => b.length - a.length)[0] ?? [];
-          if (best.length < 2) return setLineIn({ ...lineIn, s1: null, s2: null, multi: undefined });
-          const a0 = ang(best[0]), nx = -Math.sin(a0), ny = Math.cos(a0);
-          const key = (s: Sup) => nx * (s.a[0] + s.b[0]) / 2 + ny * (s.a[1] + s.b[1]) / 2;
-          best.sort((a, b) => key(a) - key(b));
-          setLineIn({ ...lineIn, s1: best[0], s2: best[1], multi: best.length > 2 ? best : undefined });
+          // đường trục / 補助線 vuông góc gần 1 điểm (đường giới hạn của khoang)
+          const endRef = (pt: number[], ux: number, uy: number, skip?: string) => {
+            let bestK = '', bestD = 800;
+            for (const r of refs) {
+              if (r.z !== undefined || r.key === skip) continue;
+              const L = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]);
+              if (L < 1) continue;
+              const rx = (r.b[0] - r.a[0]) / L, ry = (r.b[1] - r.a[1]) / L;
+              if (Math.abs(rx * ux + ry * uy) > 0.05) continue;
+              const d = Math.abs((pt[0] - r.a[0]) * ry - (pt[1] - r.a[1]) * rx);
+              if (d < bestD) { bestD = d; bestK = r.key; }
+            }
+            return bestK;
+          };
+          // ghép cặp: 大梁 song song, cùng tầng, chồng nhau theo chiều dài, gần nhau nhất
+          const pairsOf = (gp: Sup[]) => {
+            const s0 = gp[0];
+            const L0 = Math.hypot(s0.b[0] - s0.a[0], s0.b[1] - s0.a[1]) || 1;
+            const ux = (s0.b[0] - s0.a[0]) / L0, uy = (s0.b[1] - s0.a[1]) / L0, nx = -uy, ny = ux;
+            const info = gp.map((s) => {
+              const ta = s.a[0] * ux + s.a[1] * uy, tb = s.b[0] * ux + s.b[1] * uy;
+              return { s, t0: Math.min(ta, tb), t1: Math.max(ta, tb), k: nx * (s.a[0] + s.b[0]) / 2 + ny * (s.a[1] + s.b[1]) / 2, z: (s.a[2] + s.b[2]) / 2 };
+            });
+            const out: { s1: Sup; s2: Sup; ref?: string; ref2?: string }[] = [];
+            for (const A of info) {
+              let best: typeof A | null = null;
+              for (const B of info) {
+                if (B.k <= A.k + 10 || Math.abs(B.z - A.z) > 500) continue;
+                const ov = Math.min(A.t1, B.t1) - Math.max(A.t0, B.t0);
+                if (ov < 0.5 * Math.min(A.t1 - A.t0, B.t1 - B.t0)) continue;
+                if (!best || B.k < best.k) best = B;
+              }
+              if (!best) continue;
+              const t0 = Math.max(A.t0, best.t0), t1 = Math.min(A.t1, best.t1);
+              const pt = (t: number) => [ux * t + nx * A.k, uy * t + ny * A.k];
+              const ref = endRef(pt(t0), ux, uy), ref2 = endRef(pt(t1), ux, uy, ref);
+              out.push({ s1: A.s, s2: best.s, ref: ref || undefined, ref2: ref2 || undefined });
+            }
+            return out;
+          };
+          const pairs = groups.map(pairsOf).sort((a, b) => b.length - a.length)[0] ?? [];
+          if (!pairs.length) return setLineIn({ ...lineIn, s1: null, s2: null, multi: undefined, pairs: undefined });
+          const autoRef = pairs.every((pr) => pr.ref && pr.ref2);
+          const keepDs = lineIn.mode !== 'div' && lineIn.mode !== 'arr' && !!lineIn.ref && !!lineIn.ds;
+          const auto = !keepDs && autoRef ? { mode: 'div' as const, ref: pairs[0].ref!, ref2: pairs[0].ref2!, n: lineIn.n ?? 1, place: lineIn.mode === 'div' ? lineIn.place ?? 'inner' : ('inner' as const) } : {};
+          setLineIn({ ...lineIn, ...auto, s1: pairs[0].s1, s2: pairs[0].s2, multi: undefined, pairs: pairs.length > 1 ? (autoRef && !keepDs ? pairs : pairs.map((pr) => ({ s1: pr.s1, s2: pr.s2 }))) : undefined });
         } : undefined,
         onAux: (key: string) => {
           const l = auxLines.find((x) => x.key === key);
@@ -751,7 +796,7 @@ function App({ onSwitch }: { onSwitch: () => void }) {
           // 小梁 đỡ được bởi cột (dùng với đường chuẩn = tầng); 間柱 chỉ đỡ bởi 部材 nằm ngang / nghiêng
           const vert = Math.hypot(m.b[0] - m.a[0], m.b[1] - m.a[1]) < 1;
           if (vert && !(pk.kind === 'sbeam' && m.kind === 'column')) return;
-          if (step === 1) return setLineIn({ ...lineIn, s1: supFromMember(m, members), s2: null });
+          if (step === 1) return setLineIn({ ...lineIn, s1: supFromMember(m, members), s2: null, pairs: undefined, multi: undefined });
           setLineIn({ ...lineIn, s2: supFromMember(m, members) });
         },
         onGrid: (k, id) => {
@@ -947,7 +992,7 @@ function App({ onSwitch }: { onSwitch: () => void }) {
   const confirmPending = useCallback(() => {
     if (!pending) return;
     set((d) => applyPending(d, pending));
-    if (pending.kind === 'line') setLineIn((li) => ({ ...li, s1: null, s2: null, multi: undefined, ...(li.mode === 'div' || li.mode === 'arr' ? { ref: '', ref2: '' } : {}) }));
+    if (pending.kind === 'line') setLineIn((li) => ({ ...li, s1: null, s2: null, multi: undefined, pairs: undefined, ...(li.mode === 'div' || li.mode === 'arr' ? { ref: '', ref2: '' } : {}) }));
     setPending(null);
   }, [pending, applyPending, set]);
   // 間柱 / 小梁 theo đường chuẩn: tự xem trước khi đủ dữ liệu
@@ -975,7 +1020,7 @@ function App({ onSwitch }: { onSwitch: () => void }) {
   const cancelCmd = () => {
     setPending(null);
     setPk((o) => ({ ...o, on: o.fix || o.del || o.cut || o.merge || o.data ? true : o.on, start: null, first: null, editId: null, fix: false, fixSel: [], del: false, delSel: [], cut: false, cutSrc: null, merge: false, mergeSrc: null, data: false, dataSrc: null, dataLine: null, opMsg: null }));
-    setLineIn((li) => ({ ...li, s1: null, s2: null, multi: undefined }));
+    setLineIn((li) => ({ ...li, s1: null, s2: null, multi: undefined, pairs: undefined }));
     setBrPick({ ids: [], names: [] });
   };
   const stepBack = () => {
@@ -987,7 +1032,7 @@ function App({ onSwitch }: { onSwitch: () => void }) {
     if (pk.delSel?.length) return setPk({ ...pk, delSel: pk.delSel.slice(0, -1) });
     if (pk.first) return setPk({ ...pk, first: null });
     if (pk.start) return setPk({ ...pk, start: null });
-    if (lineIn.s2) return setLineIn({ ...lineIn, s2: null, multi: undefined });
+    if (lineIn.s2) return setLineIn({ ...lineIn, s2: null, multi: undefined, pairs: undefined });
     if (lineIn.s1) return setLineIn({ ...lineIn, s1: null });
     if (brPick.ids.length) return setBrPick({ ...brPick, ids: [], names: [] });
     if (brPick.q1) return setBrPick({ ids: [], names: [] });

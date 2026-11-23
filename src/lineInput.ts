@@ -41,6 +41,8 @@ export interface LineInput {
   flip?: boolean;
   /** quét chọn nhiều 大梁 song song: 小梁 tạo giữa từng cặp 大梁 kề nhau */
   multi?: Sup[];
+  /** quét chọn: từng cặp 大梁 song song kề nhau (cùng tầng, chồng nhau), mỗi cặp có đường giới hạn riêng của khoang */
+  pairs?: { s1: Sup; s2: Sup; ref?: string; ref2?: string }[];
 }
 export const initialLineInput = (): LineInput => ({ s1: null, s2: null, ref: '', ds: '1500', cum: false, mode: 'ds', ref2: '', n: 3, sp: 1500, place: 'step', from0: false, flip: false });
 
@@ -138,6 +140,16 @@ export interface LineTarget {
 }
 /** Tính vị trí các 間柱 / 小梁 theo đầu vào; trả lỗi nếu thiếu / không cắt */
 export function lineTargets(li: LineInput, refs: RefLine[], kind: 'post' | 'sbeam'): { list: LineTarget[]; err?: string } {
+  if (li.pairs && li.pairs.length > 1 && li.s1 && li.s2) {
+    const list: LineTarget[] = [];
+    const errs: string[] = [];
+    for (const pr of li.pairs) {
+      const r = lineTargets1({ ...li, s1: pr.s1, s2: pr.s2, ref: pr.ref || li.ref, ref2: pr.ref2 || li.ref2 }, refs, kind);
+      list.push(...r.list.map((t) => ({ ...t, r1: pr.s1.src, r2: pr.s2.src })));
+      if (r.err && !r.list.length) errs.push(`${pr.s1.label}–${pr.s2.label}: ${r.err}`);
+    }
+    return { list, err: errs.length ? errs.join(' · ') : undefined };
+  }
   const ms = li.multi ?? [];
   if (ms.length < 3 || !li.s1 || !li.s2) return lineTargets1(li, refs, kind);
   // nhiều 大梁 song song: từng cặp kề nhau
