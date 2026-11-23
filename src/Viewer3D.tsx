@@ -419,7 +419,23 @@ export default function Viewer3D({ project, members, selected, onSelect, highlig
     };
     const pickModel = (e: PointerEvent) => {
       ray.setFromCamera(ndc(e), camera);
-      return ray.intersectObjects(model.children.filter((o) => o.visible), false)[0];
+      const vis = model.children.filter((o) => o.visible);
+      const hit = ray.intersectObjects(vis, false)[0];
+      if (hit || e.pointerType !== 'touch') return hit;
+      // ngón tay: thanh mảnh khó bấm trúng → dò thêm các điểm quanh chỗ chạm (gần trước, xa sau)
+      const r = localRect(renderer.domElement);
+      const [px, py] = localPt(e.clientX, e.clientY);
+      for (const rad of [6, 12, 18, 24]) {
+        for (let k = 0; k < 12; k++) {
+          const a = (k / 12) * Math.PI * 2;
+          const qx = px + Math.cos(a) * rad, qy = py + Math.sin(a) * rad;
+          ray.setFromCamera(new THREE.Vector2(((qx - r.left) / r.width) * 2 - 1, -((qy - r.top) / r.height) * 2 + 1), camera);
+          const h = ray.intersectObjects(vis, false)[0];
+          if (h) { ray.setFromCamera(ndc(e), camera); return h; }
+        }
+      }
+      ray.setFromCamera(ndc(e), camera);
+      return undefined;
     };
     // dấu tâm xoay
     const marker = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: '#f97316', depthTest: false, transparent: true, opacity: 0.85 }));
@@ -431,6 +447,7 @@ export default function Viewer3D({ project, members, selected, onSelect, highlig
     let drag: { id: number; x: number; y: number; pivot: THREE.Vector3 } | null = null;
     // quét chọn bằng khung
     let box: { id: number; x0: number; y0: number; x1: number; y1: number; shift: boolean } | null = null;
+    let lpTimer = 0;
     if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
     const boxEl = document.createElement('div');
     boxEl.className = 'sel-box';
@@ -497,7 +514,19 @@ export default function Viewer3D({ project, members, selected, onSelect, highlig
       }
       down = { x: e.clientX, y: e.clientY };
       if (e.button !== 0) return;
-      if (pickRef.current?.onBox && !e.altKey && !e.ctrlKey) {
+      clearTimeout(lpTimer);
+      // điện thoại: kéo 1 ngón = xoay như thường; giữ yên ~0,45 s rồi kéo = quét chọn khung
+      if (e.pointerType === 'touch' && pickRef.current?.onBox) {
+        const [bx, by] = localPt(e.clientX, e.clientY);
+        const id = e.pointerId;
+        lpTimer = window.setTimeout(() => {
+          if (!drag || drag.id !== id || marker.visible || touches.size > 1) return;
+          drag = null;
+          box = { id, x0: bx, y0: by, x1: bx, y1: by, shift: false };
+          drawBox();
+          try { navigator.vibrate?.(15); } catch { /* bỏ qua */ }
+        }, 450);
+      } else if (pickRef.current?.onBox && !e.altKey && !e.ctrlKey) {
         const [lx, ly] = localPt(e.clientX, e.clientY);
         box = { id: e.pointerId, x0: lx, y0: ly, x1: lx, y1: ly, shift: e.shiftKey };
         try { renderer.domElement.setPointerCapture(e.pointerId); } catch { /* bỏ qua */ }
@@ -592,6 +621,7 @@ export default function Viewer3D({ project, members, selected, onSelect, highlig
       controls.update();
     };
     const onUp = (e: PointerEvent) => {
+      clearTimeout(lpTimer);
       const multi = touches.size > 1;
       touches.delete(e.pointerId);
       tpos.delete(e.pointerId);
@@ -639,7 +669,7 @@ export default function Viewer3D({ project, members, selected, onSelect, highlig
         const ln = al?.visible ? (al.children[0] as THREE.LineSegments | undefined) : undefined;
         if (ln) {
           ray.setFromCamera(ndc(e), camera);
-          ray.params.Line = { threshold: (FH / camera.zoom) * 0.012 };
+          ray.params.Line = { threshold: (FH / camera.zoom) * (e.pointerType === 'touch' ? 0.04 : 0.012) };
           const h = ray.intersectObject(ln, false)[0];
           const mh = pickModel(e);
           if (h && h.index !== undefined && (!mh || h.distance <= mh.distance + 0.5)) {
@@ -653,7 +683,7 @@ export default function Viewer3D({ project, members, selected, onSelect, highlig
       }
       if (pickRef.current?.onGrid && ctx.current?.grid.visible) {
         ray.setFromCamera(ndc(e), camera);
-        ray.params.Line = { threshold: (FH / camera.zoom) * 0.012 };
+        ray.params.Line = { threshold: (FH / camera.zoom) * (e.pointerType === 'touch' ? 0.04 : 0.012) };
         const cands = ctx.current.grid.children.filter((o) => o.userData.gk);
         const gh = ray.intersectObjects(cands, false)[0];
         const mh = pickModel(e);
