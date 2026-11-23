@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Steel 3T</string>
+    <string name="title_activity_main">Steel 3T</string>
+    <string name="package_name">vn.steel3t.app</string>
+    <string name="custom_url_scheme">vn.steel3t.app</string>
+</resources>

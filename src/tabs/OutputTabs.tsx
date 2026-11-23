@@ -2,6 +2,9 @@ import { Member, MemberKind, KIND_LABEL, Project } from '../model';
 import { bomByMark, bomBySection } from '../build';
 import { Field, Sel, Section, fmtKg, fmtMm } from '../ui';
 import { DrawingOptions } from '../Drawing2D';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 
 type ClaudeWin = { claude?: { use?: (n: string) => Promise<unknown> } };
 type Dl = { save: (r: { filename: string; data: string | Blob | ArrayBuffer | ArrayBufferView }) => Promise<unknown> } | null;
@@ -22,8 +25,24 @@ function plainDownload(name: string, blob: Blob) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+/** khi chạy trong app Android: lưu file vào bộ nhớ app rồi mở bảng chia sẻ để anh chọn nơi lưu/gửi */
+async function nativeDownload(name: string, blob: Blob) {
+  const b64 = await new Promise<string>((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1] ?? '');
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(blob);
+  });
+  const safe = name.replace(/[\\/:*?"<>|]/g, '_');
+  const w = await Filesystem.writeFile({ path: safe, data: b64, directory: Directory.Cache });
+  await Share.share({ title: safe, files: [w.uri], dialogTitle: 'Lưu / gửi file' }).catch(() => { /* người dùng đóng bảng */ });
+}
 export function download(name: string, content: string | Blob | ArrayBuffer, type: string) {
   const blob = content instanceof Blob ? content : new Blob([content], { type });
+  if (Capacitor.isNativePlatform()) {
+    nativeDownload(name, blob).catch((e: Error) => alert('Không lưu được file: ' + (e?.message ?? e)));
+    return;
+  }
   claudeDl().then((d) => {
     if (!d) return plainDownload(name, blob);
     d.save({ filename: name, data: blob }).catch((e: { code?: string; message?: string }) => {

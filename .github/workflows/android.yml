@@ -1,0 +1,33 @@
+name: Build Android APK
+on:
+  push:
+    branches: [main]
+    paths: ['src/**', 'public/**', 'index.html', 'android/**', 'package*.json', 'capacitor.config.json', '.github/workflows/android.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - run: npm ci
+      - run: npm run build:single
+      - run: npx cap sync android
+      - name: Build APK
+        working-directory: android
+        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+      - name: Publish APK to docs/
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk docs/steel3t.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/steel3t.apk
+          git commit -m "APK build ${GITHUB_RUN_NUMBER} [skip ci]" || exit 0
+          git pull --rebase origin main && git push origin HEAD:main
+      - uses: actions/upload-artifact@v4
+        with: { name: steel3t-apk, path: android/app/build/outputs/apk/debug/app-debug.apk }

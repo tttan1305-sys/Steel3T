@@ -1,0 +1,6 @@
+{
+  "appId": "vn.steel3t.app",
+  "appName": "Steel 3T",
+  "webDir": "dist-single",
+  "android": { "allowMixedContent": false }
+}

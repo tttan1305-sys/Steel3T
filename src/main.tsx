@@ -29,6 +29,6 @@ document.addEventListener('focusin', (e) => {
 document.addEventListener('focusout', () => setTimeout(() => { if (!(document.activeElement as HTMLElement | null)?.closest?.('[data-dim]')) clearHi(); }, 0));
 
 // Cài như app (PWA): chỉ khi chạy trên trang web riêng (không phải trong khung claude.ai / file máy)
-if ('serviceWorker' in navigator && location.protocol === 'https:' && !/claude\.ai|claudeusercontent/.test(location.hostname) && window.top === window.self) {
+if ('serviceWorker' in navigator && location.protocol === 'https:' && !/claude\.ai|claudeusercontent/.test(location.hostname) && window.top === window.self && !(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.()) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => { /* bỏ qua */ }); });
 }
