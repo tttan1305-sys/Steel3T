@@ -178,6 +178,7 @@ export function buildMembers(p: Project): Member[] {
     // ブラケット (剛接合): bụng dừng ở mặt ngoài cột; cánh dừng ở mép 通しダイアフラム (lùi 出寸法 e)
     const flg: [number, number] = [0, 0];
     const brkE: [boolean, boolean] = [false, false];
+    const weak: [0 | 1 | -1, 0 | 1 | -1] = [0, 0];
     const faceD: [number, number] = [0, 0];
     const trim = (k: 1 | 2) => {
       const [px, py] = k === 1 ? [ax, ay] : [bx, by];
@@ -203,7 +204,25 @@ export function buildMembers(p: Project): Member[] {
         return 0;
       }
       const cx = Math.cos(c.r), cy = Math.sin(c.r);
-      const face = ((c.cx - px) * ux + (c.cy - py) * uy) * sg + Math.abs(ux * cx + uy * cy) * (c.b / 2) + Math.abs(-ux * cy + uy * cx) * (c.h / 2);
+      let face = ((c.cx - px) * ux + (c.cy - py) * uy) * sg + Math.abs(ux * cx + uy * cy) * (c.b / 2) + Math.abs(-ux * cy + uy * cx) * (c.h / 2);
+      // H柱 弱軸 (dầm vào bụng cột, theo phương bề rộng cánh): ブラケット lọt giữa 2 cánh cột → bụng hàn vào bụng cột,
+      // cánh hàn vào 水平スチフナー nhô ra ngoài mép cánh cột một đoạn 出寸法 e
+      const ax0 = ux * cx + uy * cy;
+      if (beamEnd(bm, k) === 'rigid' && c.type === 'I' && Math.abs(ax0) > 0.9 && s.type === 'I' && s.b <= c.h - 2 * (c.tf ?? 0) - 2) {
+        const dC = ((c.cx - px) * ux + (c.cy - py) * uy) * sg;
+        const wf = dC + c.tw / 2;
+        if (wf > 0 && wf < L / 3) {
+          const ed = p.columns.find((x) => x.id === c.id)?.shikuchi?.find((e) => e.mode !== 'add' && e.mode !== 'del' && Math.abs(e.z - za) < 1500);
+          const dp = diaParams(p);
+          const e0 = ed?.overhang ?? diaE(p, p.columns.find((x) => x.id === c.id)?.memberId) ?? (dp.overhang > 0 ? dp.overhang : diaphragmOverhang(c.tw));
+          brkE[k - 1] = true;
+          faceD[k - 1] = wf;
+          flg[k - 1] = c.b / 2 - c.tw / 2 + e0;
+          weak[k - 1] = ax0 * sg > 0 ? 1 : -1;
+          face = wf;
+          return face;
+        }
+      }
       if (beamEnd(bm, k) === 'rigid') {
         if (face <= 0 || face >= L / 3) return 0;
         brkE[k - 1] = true;
@@ -227,8 +246,8 @@ export function buildMembers(p: Project): Member[] {
         const off = (s.h / 2 - s.tf / 2) / cs, ht = s.tf / 2 / cs;
         return [[zc0 - off - ht, zc0 - off + ht], [zc0 + off - ht, zc0 + off + ht]];
       };
-      if (beamEnd(bm, 1) === 'rigid') rigidEnds.push({ x: ax, y: ay, z: za, s, fl: fl(1), ref: bm.id, k: 1 });
-      if (beamEnd(bm, 2) === 'rigid') rigidEnds.push({ x: bx, y: by, z: zb2, s, fl: fl(2), ref: bm.id, k: 2 });
+      if (beamEnd(bm, 1) === 'rigid') rigidEnds.push({ x: ax, y: ay, z: za, s, fl: fl(1), ref: bm.id, k: 1, wk: weak[0] || undefined });
+      if (beamEnd(bm, 2) === 'rigid') rigidEnds.push({ x: bx, y: by, z: zb2, s, fl: fl(2), ref: bm.id, k: 2, wk: weak[1] || undefined });
     }
     const Lt = L - t1 - t2;
     const A3: Vec3 = [ax + ux * t1, ay + uy * t1, za + ((zb2 - za) * t1) / (L || 1)];
@@ -513,7 +532,7 @@ function linkGaps(p: Project, out: { a: Vec3; b: Vec3; source?: string }[]) {
 }
 
 /** fl: [cánh dưới, cánh trên] = [z thấp, z cao] tại mép ダイアフラム (đã tính dốc) */
-interface RigidEnd { x: number; y: number; z: number; s: Section; fl?: [[number, number], [number, number]]; ref?: string; k?: 1 | 2 }
+interface RigidEnd { x: number; y: number; z: number; s: Section; fl?: [[number, number], [number, number]]; ref?: string; k?: 1 | 2; /** H柱 弱軸: ブラケット ở phía ±x (trục bề rộng cánh) của cột → スチフナー phía đó nhô ra */ wk?: 1 | -1 }
 
 /** 出寸法 ダイアフラム nhập tay ở Master 本柱 (undefined = theo パラメーター) */
 const diaE = (p: Project, memberId?: string) => { const v = p.master.find((m) => m.id === memberId)?.diaE; return v !== undefined && v >= 0 ? v : undefined; };
@@ -627,8 +646,13 @@ function shikuchi(p: Project, list: Member[], ends: RigidEnd[]): Member[] {
         if (kind === 'through') all.push({ ci, kind, z: l.z, t, w: s.b + 2 * e0, d: s.h + 2 * e0, round: s.type === 'Pipe' });
         else if (kind === 'inner') all.push({ ci, kind, z: l.z, t, w: s.b - 2 * s.tw, d: s.h - 2 * s.tw, round: s.type === 'Pipe' });
         else {
-          const w = (s.b - s.tw) / 2;
-          for (const sg of [1, -1]) all.push({ ci, kind, z: l.z, t, w, d: s.h - 2 * s.tf, off: sg * (s.tw / 2 + w / 2) });
+          // phía có ブラケット 弱軸: スチフナー nhô ra ngoài mép cánh cột e0 (cánh ブラケット hàn vào mép này)
+          const zl = l.z;
+          const out = (sg: number) => nearEnds.some((e) => e.wk === sg && e.fl && Math.min(Math.abs((e.fl[0][0] + e.fl[0][1]) / 2 - zl), Math.abs((e.fl[1][0] + e.fl[1][1]) / 2 - zl)) <= dp.merge + 1);
+          for (const sg of [1, -1]) {
+            const w = (s.b - s.tw) / 2 + (out(sg) ? e0 : 0);
+            all.push({ ci, kind, z: l.z, t, w, d: s.h - 2 * s.tf, off: sg * (s.tw / 2 + w / 2) });
+          }
         }
       });
       const warn: string[] = [];
@@ -1048,7 +1072,7 @@ function columnAt(p: Project, g: Geometry, xId: string, yId: string, levelId: st
     if (!s) continue;
     const [cx, cy] = columnCenter(g.xs.get(xId)!, g.ys.get(yId)!, c, s.b, s.h);
     const r = (c.rotation * Math.PI) / 180;
-    return { cx, cy, b: s.b, h: s.h, r, type: s.type, tw: s.tw, id: c.id };
+    return { cx, cy, b: s.b, h: s.h, r, type: s.type, tw: s.tw, tf: s.tf, id: c.id };
   }
   return undefined;
 }

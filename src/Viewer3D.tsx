@@ -375,6 +375,15 @@ export default function Viewer3D({ project, members, selected, onSelect, highlig
     const jpts = new THREE.Group();
     scene.add(model, grid, nodes, jpts);
     ctx.current = { renderer, scene, camera, controls, model, grid, nodes, jpts, fitted: false };
+    // kiểm thử: đặt camera nhìn vào 1 điểm (mm)
+    (window as unknown as { __s3tCam?: unknown }).__s3tCam = (x: number, y: number, z: number, dx: number, dy: number, dz: number, zoom: number) => {
+      const t = new THREE.Vector3(x * S, y * S, z * S);
+      camera.position.copy(t).add(new THREE.Vector3(dx, dy, dz).normalize().multiplyScalar(5000 * S + 50));
+      camera.zoom = zoom;
+      camera.updateProjectionMatrix();
+      controls.target.copy(t);
+      controls.update();
+    };
     // hỗ trợ kiểm thử tự động: toạ độ mm → pixel màn hình
     (window as unknown as { __s3tToScreen?: (p: Vec3) => [number, number] }).__s3tToScreen = (q) => {
       const v3 = new THREE.Vector3(q[0] * S, q[1] * S, q[2] * S).project(camera);

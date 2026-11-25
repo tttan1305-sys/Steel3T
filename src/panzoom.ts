@@ -14,7 +14,8 @@ export interface VB {
  * @param base    khung nhìn gốc (vừa khít bản vẽ)
  * @param resetKey đổi giá trị này để quay về khung nhìn gốc (vd đổi tầng/trục)
  */
-export function usePanZoom(svgRef: RefObject<SVGSVGElement>, base: VB, resetKey: string) {
+export function usePanZoom(svgRef: RefObject<SVGSVGElement>, base: VB, resetKey: string, opts: { touchPan?: boolean } = {}) {
+  const touchPan = opts.touchPan !== false;
   const [vb, setVb] = useState<VB | null>(null);
   const cur = useRef<VB>(base);
   cur.current = vb ?? base;
@@ -35,6 +36,8 @@ export function usePanZoom(svgRef: RefObject<SVGSVGElement>, base: VB, resetKey:
       const oy = v.y + v.h / 2 - (r.height * s) / 2;
       return { x: ox + (cx - r.left) * s, y: oy + (cy - r.top) * s };
     };
+    // trình duyệt không tự xử lý chạm trên bản vẽ (không cuộn trang / phóng cả trang)
+    svg.style.touchAction = 'none';
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const v = cur.current;
@@ -46,11 +49,16 @@ export function usePanZoom(svgRef: RefObject<SVGSVGElement>, base: VB, resetKey:
     // điện thoại: 2 ngón = phóng to (chụm / mở) + dời; 1 ngón vẫn để bấm chọn
     const tp = new Map<number, [number, number]>();
     let pin: { d: number; mx: number; my: number; v: VB } | null = null;
+    // 1 ngón: kéo quá 8 px = dời bản vẽ (chạm nhẹ vẫn là bấm chọn)
+    let one: { id: number; cx: number; cy: number; v: VB; on: boolean } | null = null;
+    let eatClick = 0;
     const pinNow = () => { const [a, b] = [...tp.values()]; return { d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, mx: (a[0] + b[0]) / 2, my: (a[1] + b[1]) / 2 }; };
     const onTouchDown = (e: PointerEvent) => {
       if (e.pointerType !== 'touch') return false;
-      tp.set(e.pointerId, localPt(e.clientX, e.clientY));
-      if (tp.size === 2) { pin = { ...pinNow(), v: cur.current }; e.preventDefault(); e.stopPropagation(); }
+      const [cx, cy] = localPt(e.clientX, e.clientY);
+      tp.set(e.pointerId, [cx, cy]);
+      if (tp.size === 1 && touchPan) one = { id: e.pointerId, cx, cy, v: cur.current, on: false };
+      if (tp.size === 2) { one = null; pin = { ...pinNow(), v: cur.current }; e.preventDefault(); e.stopPropagation(); }
       return true;
     };
     const onTouchMove = (e: PointerEvent) => {
@@ -63,10 +71,26 @@ export function usePanZoom(svgRef: RefObject<SVGSVGElement>, base: VB, resetKey:
         const nv = { x: p0.x - (p0.x - v.x) * f, y: p0.y - (p0.y - v.y) * f, w: v.w * f, h: v.h * f };
         const { s } = scaleOf(nv);
         setVb({ ...nv, x: nv.x - (n.mx - pin.mx) * s, y: nv.y - (n.my - pin.my) * s });
+      } else if (one && one.id === e.pointerId && tp.size === 1) {
+        const [cx, cy] = tp.get(e.pointerId)!;
+        if (!one.on && Math.hypot(cx - one.cx, cy - one.cy) > 8) one.on = true;
+        if (one.on) {
+          e.preventDefault(); e.stopPropagation();
+          const { s } = scaleOf(one.v);
+          setVb({ ...one.v, x: one.v.x - (cx - one.cx) * s, y: one.v.y - (cy - one.cy) * s });
+        }
       }
       return true;
     };
-    const onTouchUp = (e: PointerEvent) => { if (e.pointerType !== 'touch') return; tp.delete(e.pointerId); if (tp.size < 2) pin = null; };
+    const onTouchUp = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return;
+      if (pin || one?.on) eatClick = Date.now();
+      tp.delete(e.pointerId);
+      if (tp.size < 2) pin = null;
+      if (!tp.size) one = null;
+    };
+    // vừa dời / chụm xong thì bỏ cú bấm đi kèm (không chọn nhầm)
+    const onClickCap = (e: MouseEvent) => { if (Date.now() - eatClick < 500) { e.stopPropagation(); e.preventDefault(); } };
     const onDown = (e: PointerEvent) => {
       if (onTouchDown(e)) return;
       if (e.button !== 1) return;
@@ -93,6 +117,8 @@ export function usePanZoom(svgRef: RefObject<SVGSVGElement>, base: VB, resetKey:
     svg.addEventListener('pointerup', onUp);
     svg.addEventListener('pointercancel', onUp);
     svg.addEventListener('mousedown', noAuto);
+    svg.addEventListener('click', onClickCap, true);
+    svg.addEventListener('mouseup', onClickCap, true);
     return () => {
       svg.removeEventListener('wheel', onWheel);
       svg.removeEventListener('pointerdown', onDown);
@@ -100,6 +126,8 @@ export function usePanZoom(svgRef: RefObject<SVGSVGElement>, base: VB, resetKey:
       svg.removeEventListener('pointerup', onUp);
       svg.removeEventListener('pointercancel', onUp);
       svg.removeEventListener('mousedown', noAuto);
+      svg.removeEventListener('click', onClickCap, true);
+      svg.removeEventListener('mouseup', onClickCap, true);
     };
   }, [svgRef]);
 

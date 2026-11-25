@@ -42,6 +42,9 @@ export default function GirtView({ p, members, planeId, preview, previewOpen, ac
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<{ x: number; y: number; vb: typeof vb; moved: boolean } | null>(null);
   const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  // điện thoại: 2 ngón = chụm phóng to + dời
+  const tps = useRef(new Map<number, [number, number]>());
+  const pin = useRef<{ d: number; mx: number; my: number; vb: typeof vb } | null>(null);
   if (!g) return <div className="girt-view empty">Chọn hoặc tạo 胴縁配置面.</div>;
   const sw = Math.max(vb.w, vb.h) / 700;
   const toSvg = (cx: number, cy: number) => {
@@ -93,11 +96,38 @@ export default function GirtView({ p, members, planeId, preview, previewOpen, ac
         viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
         preserveAspectRatio="xMidYMid meet"
         onWheel={onWheel}
+        style={{ touchAction: 'none' }}
         onPointerDown={(e) => {
+          if (e.pointerType === 'touch') {
+            tps.current.set(e.pointerId, [e.clientX, e.clientY]);
+            if (tps.current.size === 2) {
+              const [a, b] = [...tps.current.values()];
+              pin.current = { d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, mx: (a[0] + b[0]) / 2, my: (a[1] + b[1]) / 2, vb };
+              setBox(null);
+              if (drag.current) drag.current.moved = true;
+              return;
+            }
+          }
           drag.current = { x: e.clientX, y: e.clientY, vb, moved: false };
           if (pc?.edit && e.button === 0) { const q = toSvg(e.clientX, e.clientY); setBox({ x0: q.x, y0: q.y, x1: q.x, y1: q.y }); }
         }}
         onPointerMove={(e) => {
+          if (e.pointerType === 'touch' && tps.current.has(e.pointerId)) {
+            tps.current.set(e.pointerId, [e.clientX, e.clientY]);
+            const P = pin.current;
+            if (P && tps.current.size >= 2) {
+              const [a, b] = [...tps.current.values()];
+              const d = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+              const r = svg.current!.getBoundingClientRect();
+              const k0 = Math.max(P.vb.w / r.width, P.vb.h / r.height);
+              const ox = P.vb.x + (P.vb.w - r.width * k0) / 2, oy = P.vb.y + (P.vb.h - r.height * k0) / 2;
+              const qx = ox + (P.mx - r.left) * k0, qy = oy + (P.my - r.top) * k0;
+              const f = P.d / d;
+              const k1 = k0 * f;
+              setVb({ x: qx - (qx - P.vb.x) * f - (mx - P.mx) * k1, y: qy - (qy - P.vb.y) * f - (my - P.my) * k1, w: P.vb.w * f, h: P.vb.h * f });
+              return;
+            }
+          }
           const d = drag.current;
           if (!d || e.buttons === 0) return;
           if (box) { const q = toSvg(e.clientX, e.clientY); setBox({ ...box, x1: q.x, y1: q.y }); if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) > 5) d.moved = true; return; }
@@ -107,7 +137,9 @@ export default function GirtView({ p, members, planeId, preview, previewOpen, ac
           const k = toSvg(0, 0).k;
           setVb({ ...d.vb, x: d.vb.x - dx * k, y: d.vb.y - dy * k });
         }}
+        onPointerCancel={(e) => { tps.current.delete(e.pointerId); if (tps.current.size < 2) pin.current = null; }}
         onPointerUp={(e) => {
+          if (e.pointerType === 'touch') { tps.current.delete(e.pointerId); if (tps.current.size < 2) { if (pin.current) { pin.current = null; setTimeout(() => (drag.current = null), 0); return; } } }
           if (box && pc?.onUnits && drag.current?.moved) {
             const x0 = Math.min(box.x0, box.x1), x1 = Math.max(box.x0, box.x1), y0 = Math.min(box.y0, box.y1), y1 = Math.max(box.y0, box.y1);
             const keys = new Set<string>();

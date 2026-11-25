@@ -154,7 +154,7 @@ export default function PlateEditor({ req, onSave, onClose, mode = 'plate', bg =
     const w = Math.max(x1 - x0, 100) * 1.6, h = Math.max(y1 - y0, 100) * 1.6;
     return { x: (x0 + x1) / 2 - w / 2, y: (y0 + y1) / 2 - h / 2, w, h };
   });
-  const pz = usePanZoom(svgRef, vb0, pl.id);
+  const pz = usePanZoom(svgRef, vb0, pl.id, { touchPan: false });
 
   const say = (s: string) => setLog((l) => [...l.slice(-2), s]);
   const commit = (fn: (ents: PlateEnt[]) => PlateEnt[]) => {
