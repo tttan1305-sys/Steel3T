@@ -1,5 +1,5 @@
 // Trạng thái nhập liệu dùng chung giữa tab "Nhập cột" và khung nhìn "Mặt bằng / Trục"
-import { BeamAlign, BeamDir, BeamEnd, BeamPlace, BeamVRef, BraceRef, Member, Project, Section, Vec3 } from './model';
+import { BeamAlign, BeamDir, BeamEnd, BeamPlace, BeamVRef, BraceRef, SubSlope, Member, Project, Section, Vec3 } from './model';
 
 /** Thao tác đang chờ xác nhận (xem trước) */
 export type Pending = { kind: 'column'; nodes: [string, string][]; editId: string | null } | { kind: 'beam'; editId: string | null } | { kind: 'beams'; items: Partial<BeamInput>[]; editId: null } | { kind: 'line'; what: 'post' | 'sbeam'; targets: LineTarget[]; ref1?: string; ref2?: string; editId: null };
@@ -60,6 +60,9 @@ export interface BeamInput {
   jRef: 'center' | 'face';
   /** 'sub' = 小梁 */
   role?: 'sub';
+  /** 小梁 勾配 + lệch mặt trên */
+  sl?: SubSlope;
+  sdz?: number;
 }
 
 /** Các loại nhập: 本柱 · 大梁 · 小梁 · 間柱 · 方杖 · ブレース */

@@ -1,7 +1,8 @@
 import { columnIssue } from '../build';
 import React, { useEffect, useMemo, useState } from 'react';
 import type { PlateEditReq } from '../PlateEditor';
-import { gridPositions } from '../model';
+import { gridPositions, SUB_SLOPE_LABEL } from '../model';
+import type { SubSlope } from '../model';
 import { WORKPLANE_DIR_LABEL, WORKPLANE_KIND_LABEL, WorkPlaneDir, WorkPlaneKind, WorkPlaneOpt } from '../model';
 import type { Vec3 } from '../model';
 import type { LineInput, LineTarget, RefLine } from '../lineInput';
@@ -768,12 +769,13 @@ export function saveBeam(d: Project, bi: BeamInput, editId?: string | null): str
     up1: bi.up1 || undefined, up2: bi.up2 || undefined, j1: bi.end1 === 'rigid' ? bi.j1 || undefined : undefined, j2: bi.end2 === 'rigid' ? bi.j2 || undefined : undefined, gap: bi.end1 === 'rigid' || bi.end2 === 'rigid' ? bi.gap : undefined,
     end1: bi.end1, end2: bi.end2, jRef: bi.jRef === 'face' ? 'face' : undefined, role: bi.role,
     slopeId: bi.slopeId || undefined, dir: bi.dir || undefined,
+    sl: bi.role === 'sub' && bi.sl && bi.sl !== 'sup' ? bi.sl : undefined, sdz: bi.role === 'sub' ? bi.sdz || undefined : undefined,
     p1: free ? bi.p1! : undefined, p2: free ? bi.p2! : undefined, ref1: free ? bi.ref1 || undefined : undefined, ref2: free ? bi.ref2 || undefined : undefined,
   };
   if (editId) {
     const b = d.beams.find((bb) => bb.id === editId);
     if (b) {
-      for (const k of ['dz', 'off', 'align', 'place', 'vref', 'up1', 'up2', 'j1', 'j2', 'gap', 'p1', 'p2', 'ref1', 'ref2', 'slopeId', 'dir', 'end1', 'end2', 'jRef', 'role'] as const) delete b[k];
+      for (const k of ['dz', 'off', 'align', 'place', 'vref', 'up1', 'up2', 'j1', 'j2', 'gap', 'p1', 'p2', 'ref1', 'ref2', 'slopeId', 'dir', 'end1', 'end2', 'jRef', 'role', 'sl', 'sdz'] as const) delete b[k];
       Object.assign(b, data);
     }
     return;
@@ -962,7 +964,7 @@ function InputPanel({ checkClash, lineIn, setLineIn, refs = [], lineErr, brPick,
   const loadBeam = (id: string) => {
     const b = p.beams.find((x) => x.id === id);
     if (!b) return;
-    setBeamIn({ memberId: b.memberId, level: b.level, dz: b.dz ?? 0, x1: b.x1, y1: b.y1, x2: b.x2, y2: b.y2, off: b.off ?? 0, align: b.align ?? 'grid', place: b.place ?? 'center', vref: b.vref ?? 'top', up1: b.up1 ?? 0, up2: b.up2 ?? 0, j1: b.j1 ?? 0, j2: b.j2 ?? 0, gap: b.gap ?? 10, p1: b.p1 ?? null, p2: b.p2 ?? null, ref1: b.ref1 ?? '', ref2: b.ref2 ?? '', slopeId: b.slopeId ?? '', dir: b.dir ?? '', end1: beamEnd(b, 1), end2: beamEnd(b, 2), jRef: b.jRef ?? 'center', role: b.role });
+    setBeamIn({ memberId: b.memberId, level: b.level, dz: b.dz ?? 0, x1: b.x1, y1: b.y1, x2: b.x2, y2: b.y2, off: b.off ?? 0, align: b.align ?? 'grid', place: b.place ?? 'center', vref: b.vref ?? 'top', up1: b.up1 ?? 0, up2: b.up2 ?? 0, j1: b.j1 ?? 0, j2: b.j2 ?? 0, gap: b.gap ?? 10, p1: b.p1 ?? null, p2: b.p2 ?? null, ref1: b.ref1 ?? '', ref2: b.ref2 ?? '', slopeId: b.slopeId ?? '', dir: b.dir ?? '', end1: beamEnd(b, 1), end2: beamEnd(b, 2), jRef: b.jRef ?? 'center', role: b.role, sl: b.sl ?? 'sup', sdz: b.sdz ?? 0 });
     setPk({ ...pk, kind: b.role === 'sub' ? 'sbeam' : 'beam', editId: id, start: null });
     setMsg(null);
   };
@@ -1543,6 +1545,36 @@ function InputPanel({ checkClash, lineIn, setLineIn, refs = [], lineErr, brPick,
             <MRow n={1} label="部材名">
               <Sel value={bi.memberId} onChange={(v) => beamUpd({ memberId: v })} options={[...(bOpts.some((o) => o.value === bi.memberId) ? [] : [{ value: bi.memberId, label: '— chọn —' }]), ...bOpts]} />
             </MRow>
+            {pk.kind === 'sbeam' ? (
+            <MRow n={2} label="小梁 勾配">
+              <div className="sl-pics">
+                {(Object.keys(SUB_SLOPE_LABEL) as SubSlope[]).map((k) => (
+                  <button key={k} className={'sl-pic' + ((bi.sl ?? 'sup') === k ? ' on' : '')} onClick={() => beamUpd({ sl: k })}>
+                    <SubSlopeIcon k={k} />
+                    <span>{SUB_SLOPE_LABEL[k]}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="mrow-pair" style={{ marginTop: 4 }}>
+                <span className="small muted" style={{ alignSelf: 'center' }}>Lệch mặt trên (mm)</span>
+                <Num value={bi.sdz ?? 0} step={10} onChange={(v) => beamUpd({ sdz: v })} />
+              </div>
+              {bi.sl === 'face' && (
+                <div className="mrow-pair" style={{ marginTop: 4 }}>
+                  <span className="small muted" style={{ alignSelf: 'center' }}>Mặt 勾配 của tầng</span>
+                  <Sel value={bi.level} onChange={(v) => beamUpd({ level: v })} options={lOpts(p)} />
+                </div>
+              )}
+              <div className="muted small">
+                {(bi.sl ?? 'sup') === 'sup'
+                  ? 'Mặt trên 小梁 nối đúng line mặt trên của 2 部材 đỡ tại 2 đầu → 小梁 tự dốc theo 大梁 (mái dốc RSL).'
+                  : bi.sl === 'face'
+                    ? 'Mặt trên 小梁 nằm trên mặt 勾配 (勾配設定) của tầng.'
+                    : '小梁 nằm ngang, mặt trên bằng mặt trên 部材 đỡ thấp hơn.'}
+                {bi.sdz ? ` Hạ / nâng thêm ${bi.sdz} mm.` : ''}
+              </div>
+            </MRow>
+            ) : (
             <MRow n={2} label="Cao độ dầm">
               <div className="mrow-pair">
                 <Sel value={bi.level} onChange={(v) => beamUpd({ level: v })} options={lOpts(p)} />
@@ -1561,6 +1593,7 @@ function InputPanel({ checkClash, lineIn, setLineIn, refs = [], lineErr, brPick,
                 {p.params.member.beamTopOffset ? ` (đã gồm offset tiêu chuẩn ${p.params.member.beamTopOffset})` : ''}
               </div>
             </MRow>
+            )}
             <MRow n={3} label="Vị trí dầm">
               <div className="seg seg-sm" style={{ marginBottom: 4 }}>
                 <button className={freeBeam ? 'on' : ''} onClick={() => !freeBeam && beamUpd({ p1: [0, 0], p2: [1000, 0], ref1: '', ref2: '' })}>
@@ -2128,6 +2161,23 @@ function JointAssignPanel({ p, set, jp, setJp, plateEdit, setPlateEdit, members 
         </Section>
       )}
     </>
+  );
+}
+
+/** Hình minh hoạ 小梁 勾配: 2 大梁 đỡ (mặt cắt) + 小梁 */
+function SubSlopeIcon({ k }: { k: SubSlope }) {
+  const I = (x: number, y: number) => <path d={`M${x - 7} ${y}h14M${x} ${y}v16M${x - 7} ${y + 16}h14`} stroke="#1e3a8a" strokeWidth={2.2} fill="none" />;
+  const ya = 12, yb = 30;
+  const t = k === 'flat' ? [yb, yb] : k === 'face' ? [ya + 2, yb + 2] : [ya, yb];
+  return (
+    <svg width={96} height={56} viewBox="0 0 96 56">
+      {k === 'face' && <line x1={2} y1={ya - 2} x2={94} y2={yb + 5} stroke="#dc2626" strokeDasharray="4 3" strokeWidth={1.2} />}
+      {I(14, ya)}
+      {I(82, yb)}
+      <path d={`M21 ${t[0]} L75 ${t[1]} L75 ${t[1] + 8} L21 ${t[0] + 8} Z`} fill="#fde5bd" stroke="#b45309" strokeWidth={1.2} />
+      {k === 'sup' && <><circle cx={14} cy={ya} r={2.5} fill="#16a34a" /><circle cx={82} cy={yb} r={2.5} fill="#16a34a" /></>}
+      {k === 'flat' && <line x1={14} y1={ya} x2={14} y2={yb} stroke="#16a34a" strokeDasharray="2 2" />}
+    </svg>
   );
 }
 

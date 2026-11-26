@@ -249,6 +249,9 @@ export function slopeDz(p: Project, id: string | undefined, x: number, y: number
   return (((s.axis === 'x' ? x : y) - b) * s.pct) / 100;
 }
 
+export type SubSlope = 'sup' | 'face' | 'flat';
+export const SUB_SLOPE_LABEL: Record<SubSlope, string> = { sup: '大梁合わせ', face: '勾配面', flat: '水平' };
+
 export interface Beam {
   id: string;
   /** tấm GPL tự vẽ riêng tại từng point (id PlateShape) */
@@ -286,6 +289,10 @@ export interface Beam {
   joints?: Partial<Record<JointPos, string>>;
   /** 'sub' = 小梁 */
   role?: 'sub';
+  /** 小梁 勾配: 'sup' (mặc định) = mặt trên theo line mặt trên 2 大梁 đỡ · 'face' = theo mặt 勾配 của tầng · 'flat' = nằm ngang (theo đầu đỡ thấp hơn) */
+  sl?: SubSlope;
+  /** 小梁: lệch mặt trên so với mức chuẩn ở trên (mm, − = hạ xuống) */
+  sdz?: number;
   /** 勾配 ID: dầm nghiêng theo 1 trong các 勾配 (trống = không theo 勾配) */
   slopeId?: string;
   /** Hướng lắp (左側 → 右側): trống = theo パラメーター */

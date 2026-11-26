@@ -135,7 +135,7 @@ type Pl = { o: Vec3; u: Vec3; v: Vec3 };
  * Cắt danh sách cấu kiện bằng mặt phẳng.
  * near: cấu kiện có thân nằm trong khoảng ±near (mm) quanh mặt phẳng và gần song song → vẽ hình chiếu.
  */
-export function cutMembers(members: Member[], pl: Pl, near = 150): CutShape[] {
+export function cutMembers(members: Member[], pl: Pl, near = 150, projOnly = false, endNear = 0): CutShape[] {
   const n = nrm(cross(pl.u as V, pl.v as V));
   const o = pl.o as V, u = pl.u as V, v = pl.v as V;
   const uvOf = (X: V): UV => {
@@ -156,7 +156,8 @@ export function cutMembers(members: Member[], pl: Pl, near = 150): CutShape[] {
     const base = { id: m.id, kind: m.kind, mark: m.mark, member: m };
     const sinA = Math.abs(dot(f.z, n));
     const dA = dOf(f.a), dB = dA + dz;
-    if (sinA > 0.2 && dA * dB <= 0) {
+    // endNear > 0: dầm vuông góc dừng sát mặt phẳng (小梁 tới bụng 大梁 tại trục) → vẫn vẽ mặt cắt tại đầu gần
+    if (!projOnly && sinA > 0.2 && (dA * dB <= 0 || (endNear > 0 && m.kind === 'beam' && Math.min(Math.abs(dA), Math.abs(dB)) <= endNear))) {
       // trục xuyên qua mặt phẳng → mặt cắt: mỗi đỉnh biên dạng chạy dọc trục tới mặt phẳng
       const polys = loops.map((lp) =>
         lp.map((q) => {
@@ -168,7 +169,7 @@ export function cutMembers(members: Member[], pl: Pl, near = 150): CutShape[] {
       const edges: [UV, UV][] = polys.flatMap((pg) => pg.map((a, i) => [a, pg[(i + 1) % pg.length]] as [UV, UV]));
       const c = polys[0].reduce((s, q) => [s[0] + q[0] / polys[0].length, s[1] + q[1] / polys[0].length] as UV, [0, 0] as UV);
       out.push({ ...base, mode: 'cut', polys, edges, hidden: [], at: c });
-    } else if (sinA <= 0.2) {
+    } else if (projOnly || sinA <= 0.2) {
       // gần song song → hình chiếu: nét ngoài + nét chiều dày (khuất = nét đứt), không vẽ nét góc bo
       const A = uvOf(f.a), B = uvOf(m.b as V);
       const side = m.kind === 'beam' && m.section.type === 'I' && Math.abs(dot(f.x, n)) > 0.95 ? bracketSide(m) : null;

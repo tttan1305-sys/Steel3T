@@ -840,24 +840,59 @@ export default function Viewer3D({ project, members, selected, onSelect, highlig
           gm.visible = mesh.visible;
           c.model.add(gm);
         };
+        // dầm dốc cắt đứng (plumb) ở đầu ブラケット: điểm cao v (vuông góc trục) dời dọc trục v·tanθ để mặt cắt thẳng đứng
+        const hz = Math.hypot(m.b[0] - m.a[0], m.b[1] - m.a[1]) || 1;
+        const tq = (m.b[2] - m.a[2]) / hz, cs = 1 / Math.sqrt(1 + tq * tq);
+        const pl = m.plumb ?? [false, false];
+        const pa = be[0] && pl[0] ? tq : 0, pb = be[1] && pl[1] ? tq : 0;
+        const H = hw / 2;
         // cánh: mặt cắt dọc (u dọc dầm, v từ mặt trong ra mặt ngoài), 開先 mở ra phía ngoài
-        const fl = new THREE.Shape();
-        fl.moveTo(ga, 0); fl.lineTo(len - gb, 0); fl.lineTo(len - gb - bb, tf); fl.lineTo(ga + ba, tf); fl.closePath();
-        for (const sg of [1, -1]) add(fl, fb, z, y.clone().multiplyScalar(sg), x, A.clone().add(y.clone().multiplyScalar((sg * hw * S) / 2)).add(x.clone().multiplyScalar((-fb * S) / 2)));
+        for (const sg of [1, -1]) {
+          const v0 = sg * H, v1 = sg * (H + tf);
+          const fl = new THREE.Shape();
+          fl.moveTo(ga + v0 * pa, 0); fl.lineTo(len - gb + v0 * pb, 0); fl.lineTo(len - gb - bb + v1 * pb, tf); fl.lineTo(ga + ba + v1 * pa, tf); fl.closePath();
+          add(fl, fb, z, y.clone().multiplyScalar(sg), x, A.clone().add(y.clone().multiplyScalar((sg * hw * S) / 2)).add(x.clone().multiplyScalar((-fb * S) / 2)));
+        }
         // bụng: スカラップ = khoét 1/4 tròn r1 ở góc tiếp giáp cánh tại đầu hàn vào cột
         const sc = bw.scallop === 'scallop';
         const ra = be[0] && sc ? Math.min(bw.r1 ?? 35, hw / 3) : 0, rb = be[1] && sc ? Math.min(bw.r1 ?? 35, hw / 3) : 0;
-        const H = hw / 2;
         const wb = new THREE.Shape();
-        wb.moveTo(0, -H + ra);
-        wb.lineTo(0, H - ra);
-        if (ra) wb.absarc(0, H, ra, -Math.PI / 2, 0, false);
-        wb.lineTo(len - rb, H);
-        if (rb) wb.absarc(len, H, rb, Math.PI, Math.PI * 1.5, false);
-        wb.lineTo(len, -H + rb);
-        if (rb) wb.absarc(len, -H, rb, Math.PI / 2, Math.PI, false);
-        wb.lineTo(ra, -H);
-        if (ra) wb.absarc(0, -H, ra, 0, Math.PI / 2, false);
+        // 通しダイアフラム: trong đoạn 出寸法 (từ mặt コア tới mép ダイアフラム) bụng chỉ nằm giữa mặt dưới ダイアフラム trên và
+        // mặt trên ダイアフラム dưới (cao độ tuyệt đối dSurf) → khớp với コア, không chồng lên ダイアフラム
+        const dsf = m.dSurf ?? [undefined, undefined];
+        const vAt = (zAbs: number, u: number) => (zAbs - (m.a[2] + (m.b[2] - m.a[2]) * (u / len))) * cs;
+        const dA = be[0] ? dsf[0] : undefined, dB = be[1] ? dsf[1] : undefined;
+        const ea = dA ? Math.max(ga, 1) : 0, eb = dB ? Math.max(gb, 1) : 0;
+        if (dA) {
+          wb.moveTo(vAt(dA[0], 0) * pa, vAt(dA[0], 0));
+          wb.lineTo(vAt(dA[1], 0) * pa, vAt(dA[1], 0));
+          wb.lineTo(ea + vAt(dA[1], ea) * pa, vAt(dA[1], ea));
+          wb.lineTo(ea + H * pa, H);
+        } else {
+          wb.moveTo(-H * pa, -H + ra);
+          wb.lineTo(H * pa, H - ra);
+          if (ra) wb.absarc(0, H, ra, -Math.PI / 2, 0, false);
+        }
+        if (dB) {
+          wb.lineTo(len - eb + H * pb, H);
+          wb.lineTo(len - eb + vAt(dB[1], len - eb) * pb, vAt(dB[1], len - eb));
+          wb.lineTo(len + vAt(dB[1], len) * pb, vAt(dB[1], len));
+          wb.lineTo(len + vAt(dB[0], len) * pb, vAt(dB[0], len));
+          wb.lineTo(len - eb + vAt(dB[0], len - eb) * pb, vAt(dB[0], len - eb));
+          wb.lineTo(len - eb - H * pb, -H);
+        } else {
+          wb.lineTo(len - rb + H * pb, H);
+          if (rb) wb.absarc(len, H, rb, Math.PI, Math.PI * 1.5, false);
+          wb.lineTo(len - H * pb, -H + rb);
+          if (rb) wb.absarc(len, -H, rb, Math.PI / 2, Math.PI, false);
+        }
+        if (dA) {
+          wb.lineTo(ea - H * pa, -H);
+          wb.lineTo(ea + vAt(dA[0], ea) * pa, vAt(dA[0], ea));
+        } else {
+          wb.lineTo(ra - H * pa, -H);
+          if (ra) wb.absarc(0, -H, ra, 0, Math.PI / 2, false);
+        }
         wb.closePath();
         add(wb, tw, z, y, x, A.clone().add(x.clone().multiplyScalar((-tw * S) / 2)));
       }

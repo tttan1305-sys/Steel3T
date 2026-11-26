@@ -104,7 +104,33 @@ export function buildMembers(p: Project): Member[] {
 
   // --- Dầm ---
   const rigidEnds: RigidEnd[] = [];
-  for (const bm of p.beams) {
+  // line mặt trên từng dầm (mặt bằng 2 đầu + cao độ mặt trên) → 小梁 lấy cao độ theo 大梁 đỡ
+  const topLn = new Map<string, { ax: number; ay: number; bx: number; by: number; ta: number; tb: number }>();
+  const supTop = (id: string | undefined, x: number, y: number) => {
+    const l = id ? topLn.get(id) : undefined;
+    if (!l) return undefined;
+    const dx = l.bx - l.ax, dy = l.by - l.ay, L2 = dx * dx + dy * dy;
+    if (L2 < 1) return undefined;
+    const t = ((x - l.ax) * dx + (y - l.ay) * dy) / L2;
+    if (t < -0.2 || t > 1.2 || Math.abs((x - l.ax) * dy - (y - l.ay) * dx) / Math.sqrt(L2) > 1500) return undefined;
+    return l.ta + (l.tb - l.ta) * t;
+  };
+  // không có ref: tìm dầm đi qua điểm (x, y) trên mặt bằng (lấy mặt trên cao nhất)
+  const supAny = (x: number, y: number, self: string) => {
+    let best: number | undefined;
+    for (const [id, l] of topLn) {
+      if (id === self) continue;
+      const dx = l.bx - l.ax, dy = l.by - l.ay, L2 = dx * dx + dy * dy;
+      if (L2 < 1) continue;
+      const t = ((x - l.ax) * dx + (y - l.ay) * dy) / L2;
+      if (t < -0.01 || t > 1.01 || Math.abs((x - l.ax) * dy - (y - l.ay) * dx) / Math.sqrt(L2) > 60) continue;
+      const z = l.ta + (l.tb - l.ta) * t;
+      if (best === undefined || z > best) best = z;
+    }
+    return best;
+  };
+  // 大梁 trước, 小梁 sau (小梁 cần line mặt trên của 部材 đỡ)
+  for (const bm of [...p.beams.filter((b) => b.role !== 'sub'), ...p.beams.filter((b) => b.role === 'sub')]) {
     const s = msec(bm.memberId);
     const z = g.lv.get(bm.level);
     const [a, b] = beamEnds(g, bm, p.params.member.beamDir);
@@ -147,9 +173,28 @@ export function buildMembers(p: Project): Member[] {
       const adj = (vr === 'top' ? -1 : vr === 'bottom' ? 1 : 0) * (s.h / 2) * (1 / c - 1);
       return [z(ta) + adj, z(tb) + adj];
     })();
-    const za = zc + (bm.up1 ?? 0) + slopeDz(p, bm.slopeId, ax, ay) + (ptLine ? ptLine[0] : sfz(1, ax, ay)) + (bm.level === g.baseLevel ? g.groundZ(ax, ay) : 0);
-    const zb2 = zc + (bm.up2 ?? 0) + slopeDz(p, bm.slopeId, bx, by) + (ptLine ? ptLine[1] : sfz(2, bx, by)) + (bm.level === g.baseLevel ? g.groundZ(bx, by) : 0);
+    let za = zc + (bm.up1 ?? 0) + slopeDz(p, bm.slopeId, ax, ay) + (ptLine ? ptLine[0] : sfz(1, ax, ay)) + (bm.level === g.baseLevel ? g.groundZ(ax, ay) : 0);
+    let zb2 = zc + (bm.up2 ?? 0) + slopeDz(p, bm.slopeId, bx, by) + (ptLine ? ptLine[1] : sfz(2, bx, by)) + (bm.level === g.baseLevel ? g.groundZ(bx, by) : 0);
     const L = Math.hypot(bx - ax, by - ay);
+    // tâm dầm → mặt trên (theo phương đứng): h/2 / cosθ
+    const hTop = (ta: number, tb: number) => (s.h / 2) * Math.sqrt(1 + ((tb - ta) / (L || 1)) ** 2);
+    if (bm.role === 'sub') {
+      // 小梁 勾配: mặt trên tại 2 đầu
+      const sl = bm.sl ?? 'sup', top0 = p.params.member.beamTopOffset;
+      // cao độ tuyệt đối đã lưu (nhập theo đường chuẩn) – dùng khi không tìm được 部材 đỡ
+      const fb = (k: 1 | 2) => z + (bm.dz ?? 0) + top0 + ((k === 1 ? bm.up1 : bm.up2) ?? 0);
+      const fc = (k: 1 | 2) => z + top0 + (k === 1 ? sfz(1, ax, ay) : sfz(2, bx, by));
+      let tA: number, tB: number;
+      if (sl === 'face') { tA = fc(1); tB = fc(2); }
+      else {
+        tA = supTop(bm.ref1, ax - off[0], ay - off[1]) ?? supAny(ax - off[0], ay - off[1], bm.id) ?? fb(1);
+        tB = supTop(bm.ref2, bx - off[0], by - off[1]) ?? supAny(bx - off[0], by - off[1], bm.id) ?? fb(2);
+        if (sl === 'flat') tA = tB = Math.min(tA, tB);
+      }
+      tA += bm.sdz ?? 0; tB += bm.sdz ?? 0;
+      if (Number.isFinite(tA) && Number.isFinite(tB)) { const hc = hTop(tA, tB); za = tA - hc; zb2 = tB - hc; }
+    }
+    { const hc = hTop(za, zb2); topLn.set(bm.id, { ax, ay, bx, by, ta: za + hc, tb: zb2 + hc }); }
     // ブラケット (剛接合): 継手距離 = từ tâm cột (hoặc mép cột) tới mép ngoài ブラケット
     const ux = (bx - ax) / (L || 1), uy = (by - ay) / (L || 1);
     const gapB = bm.gap ?? jointMidGap(p, bm.joints, bm.memberId);

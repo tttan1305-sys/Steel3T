@@ -115,7 +115,15 @@ export default function Input2D({ project: p, members, set, colIn, v2d, braceIn,
     const dn = cols.filter((m) => !spans(m.source, m.id, el + 1000) && Math.min(m.a[2], m.b[2]) < el - 1000 && Math.max(m.a[2], m.b[2]) > el - 1000);
     return [...cutMembers(up, at(el + 1000), 1), ...cutMembers(dn, at(el - 1000), 1)].filter((c) => c.mode === 'cut');
   };
-  const shapes = viewPl ? (v2d.view === 'plan' ? [...cutMembers(members.filter((m) => m.kind !== 'column'), viewPl), ...colCut()] : cutMembers(members, viewPl)) : [];
+  // Mặt bằng: mọi 大梁 / 小梁 của tầng (kể cả dầm dốc trên mái RSL) → hình chiếu lên mặt bằng, không phụ thuộc cao độ
+  const planShapes = () => {
+    const lvB = new Set(p.beams.filter((b) => b.level === v2d.levelId).map((b) => b.id));
+    const nc = members.filter((m) => m.kind !== 'column');
+    const inLv = nc.filter((m) => (m.kind === 'beam' || m.kind === 'rafter') && m.source && lvB.has(m.source));
+    const ids = new Set(inLv.map((m) => m.id));
+    return [...cutMembers(nc.filter((m) => !ids.has(m.id)), viewPl!), ...cutMembers(inLv, viewPl!, 1e7, true), ...colCut()];
+  };
+  const shapes = viewPl ? (v2d.view === 'plan' ? planShapes() : cutMembers(members, viewPl, 150, false, v2d.view === 'wp' ? 0 : 150).sort((x, y) => (x.mode === 'cut' ? 1 : 0) - (y.mode === 'cut' ? 1 : 0))) : [];
 
   const hs = wRect ? [wRect[0], wRect[1]] : H.map((a) => a.pos), vs = wRect ? [wRect[2], wRect[3]] : V.map((a) => a.pos);
   const minX = wRect ? wRect[0] : Math.min(...hs, 0), maxX = wRect ? wRect[1] : Math.max(...hs, 1000);
@@ -665,7 +673,7 @@ export default function Input2D({ project: p, members, set, colIn, v2d, braceIn,
                       <path d={c.polys.map((lp) => 'M' + lp.map(([x, y]) => `${x},${-y}`).join('L') + 'Z').join(' ')} fill="#1e3a8a" fillRule="evenodd" stroke="#0f172a" strokeWidth={1} vectorEffect="non-scaling-stroke" />
                     </>
                   ) : c.mode === 'cut' ? (
-                    <path d={c.polys.map((lp) => 'M' + lp.map(([x, y]) => `${x},${-y}`).join('L') + 'Z').join(' ')} fill={col} fillRule="evenodd" stroke="#0f172a" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+                    <path d={c.polys.map((lp) => 'M' + lp.map(([x, y]) => `${x},${-y}`).join('L') + 'Z').join(' ')} fill={m.kind === 'beam' ? '#7c2d12' : col} fillRule="evenodd" stroke="#0f172a" strokeWidth={1} vectorEffect="non-scaling-stroke" />
                   ) : (
                     <polygon points={pts2(c.polys.length ? (c.polys[0] as [number, number][]) : hullOf(c.edges.flat()))} fill={col} fillOpacity={0.3} stroke="none" />
                   )}

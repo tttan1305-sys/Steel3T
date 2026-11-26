@@ -684,3 +684,6 @@ html.mob .bom h2 { font-size: 16px; margin: 4px 0 8px; }
 /* bàn phím ảo đang mở: cửa sổ nổi chỉ chiếm phần màn hình thấy được phía trên bàn phím */
 html.kb-open .fwin { top: var(--vvt, 0px) !important; height: var(--vvh, 100dvh) !important; max-height: var(--vvh, 100dvh); min-height: 0; resize: none; }
 html.kb-open.mob .mob-nav { display: none; }
+.sl-pics { display: flex; gap: 6px; flex-wrap: wrap; }
+.sl-pic { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 6px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; font-size: 12px; }
+.sl-pic.on { border-color: #2563eb; background: #eff6ff; box-shadow: 0 0 0 1px #2563eb; font-weight: 600; }
